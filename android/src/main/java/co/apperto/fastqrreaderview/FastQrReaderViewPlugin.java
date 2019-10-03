@@ -327,7 +327,8 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
         @Override
         public boolean onRequestPermissionsResult(int id, String[] permissions, int[] grantResults) {
             if (id == CAMERA_REQUEST_ID) {
-                cameraPermissionContinuation.run();
+                if (cameraPermissionContinuation != null)
+                    cameraPermissionContinuation.run();
                 return true;
             }
             return false;
