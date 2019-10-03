@@ -565,7 +565,7 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
                         registrar
                                 .activity()
                                 .requestPermissions(
-                                        new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO},
+                                        new String[]{Manifest.permission.CAMERA},
                                         CAMERA_REQUEST_ID);
                     }
                 }
