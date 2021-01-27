@@ -3,7 +3,6 @@ package co.apperto.fastqrreaderview;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.app.Application;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -16,7 +15,6 @@ import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.net.Uri;
 import android.os.Build;
-import android.os.Bundle;
 import android.provider.Settings;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -27,7 +25,7 @@ import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.Surface;
 
-import com.google.firebase.ml.vision.barcode.FirebaseVisionBarcode;
+import com.google.mlkit.vision.barcode.Barcode;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -42,19 +40,23 @@ import co.apperto.fastqrreaderview.common.CameraSource;
 import co.apperto.fastqrreaderview.common.CameraSourcePreview;
 import co.apperto.fastqrreaderview.java.barcodescanning.BarcodeScanningProcessor;
 import co.apperto.fastqrreaderview.java.barcodescanning.OnCodeScanned;
+import io.flutter.embedding.engine.plugins.FlutterPlugin;
+import io.flutter.embedding.engine.plugins.activity.ActivityAware;
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
+import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.plugin.common.PluginRegistry;
-import io.flutter.plugin.common.PluginRegistry.Registrar;
 import io.flutter.view.FlutterView;
+import io.flutter.view.TextureRegistry;
 
 /**
  * FastQrReaderViewPlugin
  */
-public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry.RequestPermissionsResultListener {
+public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry.RequestPermissionsResultListener, FlutterPlugin, ActivityAware {
 
     private static final int CAMERA_REQUEST_ID = 513469796;
     private static final int REQUEST_PERMISSION = 47;
@@ -70,113 +72,29 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
             };
 
     private static CameraManager cameraManager;
-    private final FlutterView view;
     private QrReader camera;
     private Activity activity;
-    private Registrar registrar;
-    private Application.ActivityLifecycleCallbacks activityLifecycleCallbacks;
     // The code to run after requesting camera permissions.
     private Runnable cameraPermissionContinuation;
     private boolean requestingPermission;
     private static MethodChannel channel;
     private Result permissionResult;
+    private BinaryMessenger messenger;
+    private TextureRegistry textureRegistry;
 
     // Whether we should ignore process(). This is usually caused by feeding input data faster than
     // the model can handle.
 //    private final AtomicBoolean shouldThrottle = new AtomicBoolean(false);
 
 
-    private FastQrReaderViewPlugin(Registrar registrar, FlutterView view, Activity activity) {
-
-        this.registrar = registrar;
-        this.view = view;
-        this.activity = activity;
-
-        registrar.addRequestPermissionsResultListener(new CameraRequestPermissionsListener());
-
-        this.activityLifecycleCallbacks =
-                new Application.ActivityLifecycleCallbacks() {
-                    @Override
-                    public void onActivityCreated(Activity activity, Bundle savedInstanceState) {
-                    }
-
-                    @Override
-                    public void onActivityStarted(Activity activity) {
-                    }
-
-                    @Override
-                    public void onActivityResumed(Activity activity) {
-                        if (requestingPermission) {
-                            requestingPermission = false;
-                            return;
-                        }
-                        if (activity == FastQrReaderViewPlugin.this.activity) {
-                            if (camera != null) {
-                                camera.startCameraSource();
-                            }
-                        }
-                    }
-
-                    @Override
-                    public void onActivityPaused(Activity activity) {
-                        if (activity == FastQrReaderViewPlugin.this.activity) {
-                            if (camera != null) {
-                                if (camera.preview != null) {
-                                    camera.preview.stop();
-
-                                }
-                            }
-                        }
-                    }
-
-                    @Override
-                    public void onActivityStopped(Activity activity) {
-                        if (activity == FastQrReaderViewPlugin.this.activity) {
-                            if (camera != null) {
-                                if (camera.preview != null) {
-                                    camera.preview.stop();
-                                }
-
-                                if (camera.cameraSource != null) {
-                                    camera.cameraSource.release();
-                                }
-                            }
-                        }
-                    }
-
-                    @Override
-                    public void onActivitySaveInstanceState(Activity activity, Bundle outState) {
-                    }
-
-                    @Override
-                    public void onActivityDestroyed(Activity activity) {
-
-                    }
-                };
-    }
-
-    /**
-     * Plugin registration.
-     */
-    public static void registerWith(Registrar registrar) {
-        channel =
-                new MethodChannel(registrar.messenger(), "fast_qr_reader_view");
-
-        cameraManager = (CameraManager) registrar.activity().getSystemService(Context.CAMERA_SERVICE);
-
-        channel.setMethodCallHandler(
-                new FastQrReaderViewPlugin(registrar, registrar.view(), registrar.activity()));
-
-        FastQrReaderViewPlugin plugin = new FastQrReaderViewPlugin(registrar, registrar.view(), registrar.activity());
-        channel.setMethodCallHandler(plugin);
-        registrar.addRequestPermissionsResultListener(plugin);
-    }
+    public FastQrReaderViewPlugin() {}
 
     /*
      * Open Settings screens
      */
     private void openSettings() {
-        Activity activity = registrar.activity();
+        if (activity == null)
+            return;
         Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + activity.getPackageName()));
         intent.addCategory(Intent.CATEGORY_DEFAULT);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -286,7 +204,6 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
                 break;
             case "requestPermission":
                 this.permissionResult = result;
-                Activity activity = registrar.activity();
                 ActivityCompat.requestPermissions(activity, new String[]{Manifest.permission.CAMERA}, REQUEST_PERMISSION);
                 break;
             case "settings":
@@ -298,12 +215,6 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
                 if (camera != null) {
                     camera.dispose();
                 }
-
-                if (this.activity != null && this.activityLifecycleCallbacks != null) {
-                    this.activity
-                            .getApplication()
-                            .unregisterActivityLifecycleCallbacks(this.activityLifecycleCallbacks);
-                }
                 result.success(null);
                 break;
             }
@@ -311,6 +222,42 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
                 result.notImplemented();
                 break;
         }
+    }
+
+    @Override
+    public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
+        messenger = binding.getBinaryMessenger();
+        channel = new MethodChannel(messenger, "fast_qr_reader_view");
+        channel.setMethodCallHandler(this);
+        textureRegistry = binding.getTextureRegistry();
+    }
+
+    @Override
+    public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+        messenger = null;
+        channel.setMethodCallHandler(null);
+    }
+
+    @Override
+    public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
+        activity = binding.getActivity();
+        binding.addRequestPermissionsResultListener(new CameraRequestPermissionsListener());
+        cameraManager = (CameraManager) binding.getActivity().getSystemService(Context.CAMERA_SERVICE);
+    }
+
+    @Override
+    public void onDetachedFromActivityForConfigChanges() {
+
+    }
+
+    @Override
+    public void onReattachedToActivityForConfigChanges(@NonNull ActivityPluginBinding binding) {
+
+    }
+
+    @Override
+    public void onDetachedFromActivity() {
+        activity = null;
     }
 
     private static class CompareSizesByArea implements Comparator<Size> {
@@ -340,66 +287,6 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
         camera.scanning = true;
         camera.barcodeScanningProcessor.shouldThrottle.set(false);
         result.success(null);
-//        camera.imageReader.setOnImageAvailableListener(
-//                new ImageReader.OnImageAvailableListener() {
-//                    @Override
-//                    public void onImageAvailable(ImageReader reader) {
-//
-//                        if (camera.scanning) {
-//                            try (Image image = reader.acquireLatestImage()) {
-//
-//                                if (shouldThrottle.get()) {
-//                                    image.close();
-//                                    return;
-//                                }
-//                                shouldThrottle.set(true);
-//
-//                                FirebaseVisionImage test = FirebaseVisionImage.fromByteBuffer(image.getPlanes()[0].getBuffer(), new FirebaseVisionImageMetadata.Builder()
-//                                        .setFormat(FirebaseVisionImageMetadata.IMAGE_FORMAT_NV21)
-//                                        .setHeight(image.getHeight())
-//                                        .setWidth(image.getWidth())
-//                                        .build());
-////                                FirebaseVisionImage test = FirebaseVisionImage.fromMediaImage(image, FirebaseVisionImageMetadata.ROTATION_0); // Slower in my experience
-//                                image.close();
-//
-//                                camera.codeDetector.detectInImage(test).addOnSuccessListener(new OnSuccessListener<List<FirebaseVisionBarcode>>() {
-//                                    @Override
-//                                    public void onSuccess(List<FirebaseVisionBarcode> firebaseVisionBarcodes) {
-//                                        if (camera.scanning) {
-//                                            if (firebaseVisionBarcodes.size() > 0) {
-//                                                Log.w(TAG, "onSuccess: " + firebaseVisionBarcodes.get(0).getRawValue());
-//                                                channel.invokeMethod("updateCode", firebaseVisionBarcodes.get(0).getRawValue());
-////                                                Map<String, String> event = new HashMap<>();
-////                                                event.put("eventType", "cameraClosing");
-////                                                camera.eventSink.success(event);
-//                                                stopScanning();
-//                                            }
-//                                        }
-//                                        shouldThrottle.set(false);
-//                                    }
-//                                }).addOnFailureListener(new OnFailureListener() {
-//                                    @Override
-//                                    public void onFailure(@NonNull Exception e) {
-//                                        shouldThrottle.set(false);
-////                                            Log.d("test", "asdasd");
-//                                        e.printStackTrace();
-//                                    }
-//                                });
-//
-//                            } catch (Exception e) {
-//                                shouldThrottle.set(false);
-//                                e.printStackTrace();
-//                            }
-//                        }
-//                    }
-//                },
-//                camera.codeDetectionHandler);
-//
-//        try (Image image = camera.imageReader.acquireLatestImage()) {
-//            image.close();
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
     }
 
     void stopScanning(@NonNull Result result) {
@@ -410,8 +297,6 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
     private void stopScanning() {
         camera.scanning = false;
         camera.barcodeScanningProcessor.shouldThrottle.set(true);
-//        camera.imageReader.setOnImageAvailableListener(null, null);
-//        camera.imageReader.close();
     }
 
     void toggleFlash(@NonNull Result result) {
@@ -432,11 +317,7 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
         private CameraSourcePreview preview;
 
         private final FlutterView.SurfaceTextureEntry textureEntry;
-
-        //        private CameraDevice cameraDevice;
-//        private CameraCaptureSession cameraCaptureSession;
         private EventChannel.EventSink eventSink;
-//        private ImageReader imageReader;
 
         BarcodeScanningProcessor barcodeScanningProcessor;
 
@@ -448,8 +329,6 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
         private Size previewSize;
         //        private CaptureRequest.Builder captureRequestBuilder;
         private Size videoSize;
-        //        //        private MediaRecorder mediaRecorder;
-////        private boolean recordingVideo;
 //        FirebaseVisionBarcodeDetectorOptions visionOptions;
 //        FirebaseVisionBarcodeDetector codeDetector;
 //        private Handler codeDetectionHandler = null;
@@ -480,19 +359,19 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
             // enum CodeFormat { codabar, code39, code93, code128, ean8, ean13, itf, upca, upce, aztec, datamatrix, pdf417, qr }
 
             Map<String, Integer> map = new HashMap<>();
-            map.put("codabar", FirebaseVisionBarcode.FORMAT_CODABAR);
-            map.put("code39", FirebaseVisionBarcode.FORMAT_CODE_39);
-            map.put("code93", FirebaseVisionBarcode.FORMAT_CODE_93);
-            map.put("code128", FirebaseVisionBarcode.FORMAT_CODE_128);
-            map.put("ean8", FirebaseVisionBarcode.FORMAT_EAN_8);
-            map.put("ean13", FirebaseVisionBarcode.FORMAT_EAN_13);
-            map.put("itf", FirebaseVisionBarcode.FORMAT_ITF);
-            map.put("upca", FirebaseVisionBarcode.FORMAT_UPC_A);
-            map.put("upce", FirebaseVisionBarcode.FORMAT_UPC_E);
-            map.put("aztec", FirebaseVisionBarcode.FORMAT_AZTEC);
-            map.put("datamatrix", FirebaseVisionBarcode.FORMAT_DATA_MATRIX);
-            map.put("pdf417", FirebaseVisionBarcode.FORMAT_PDF417);
-            map.put("qr", FirebaseVisionBarcode.FORMAT_QR_CODE);
+            map.put("codabar", Barcode.FORMAT_CODABAR);
+            map.put("code39", Barcode.FORMAT_CODE_39);
+            map.put("code93", Barcode.FORMAT_CODE_93);
+            map.put("code128", Barcode.FORMAT_CODE_128);
+            map.put("ean8", Barcode.FORMAT_EAN_8);
+            map.put("ean13", Barcode.FORMAT_EAN_13);
+            map.put("itf", Barcode.FORMAT_ITF);
+            map.put("upca", Barcode.FORMAT_UPC_A);
+            map.put("upce", Barcode.FORMAT_UPC_E);
+            map.put("aztec", Barcode.FORMAT_AZTEC);
+            map.put("datamatrix", Barcode.FORMAT_DATA_MATRIX);
+            map.put("pdf417", Barcode.FORMAT_PDF417);
+            map.put("qr", Barcode.FORMAT_QR_CODE);
 
 
             reqFormats = new ArrayList<>();
@@ -504,7 +383,7 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
                 }
             }
 
-            textureEntry = view.createSurfaceTexture();
+            textureEntry = textureRegistry.createSurfaceTexture();
 //barcodeScanningProcessor.onSuccess();
 //
             try {
@@ -548,11 +427,6 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
                                             "cameraPermission", "MediaRecorderCamera permission not granted", null);
                                     return;
                                 }
-//                                if (!hasAudioPermission()) {
-//                                    result.error(
-//                                            "cameraPermission", "MediaRecorderAudio permission not granted", null);
-//                                    return;
-//                                }
                                 open(result);
                             }
                         };
@@ -560,13 +434,12 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
                 if (hasCameraPermission()) {
                     cameraPermissionContinuation.run();
                 } else {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && activity != null) {
                         requestingPermission = true;
-                        registrar
-                                .activity()
-                                .requestPermissions(
-                                        new String[]{Manifest.permission.CAMERA},
-                                        CAMERA_REQUEST_ID);
+                        activity.requestPermissions(
+                            new String[]{Manifest.permission.CAMERA},
+                            CAMERA_REQUEST_ID
+                        );
                     }
                 }
             } catch (CameraAccessException e) {
@@ -579,7 +452,7 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
         //
         private void registerEventChannel() {
             new EventChannel(
-                    registrar.messenger(), "fast_qr_reader_view/cameraEvents" + textureEntry.id())
+                    messenger, "fast_qr_reader_view/cameraEvents" + textureEntry.id())
                     .setStreamHandler(
                             new EventChannel.StreamHandler() {
                                 @Override
@@ -656,16 +529,11 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
                 barcodeScanningProcessor = new BarcodeScanningProcessor(reqFormats);
                 barcodeScanningProcessor.callback = new OnCodeScanned() {
                     @Override
-                    public void onCodeScanned(FirebaseVisionBarcode barcode) {
+                    public void onCodeScanned(Barcode barcode) {
                         if (camera.scanning) {
-//                                            if (firebaseVisionBarcodes.size() > 0) {
                             Log.w(TAG, "onSuccess: " + barcode.getRawValue());
                             channel.invokeMethod("updateCode", barcode.getRawValue());
-//                                                Map<String, String> event = new HashMap<>();
-//                                                event.put("eventType", "cameraClosing");
-//                                                camera.eventSink.success(event);
                             stopScanning();
-//                                            }
                         }
                     }
                 };

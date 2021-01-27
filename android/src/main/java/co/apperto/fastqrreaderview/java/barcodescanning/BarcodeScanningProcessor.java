@@ -18,13 +18,12 @@ import android.util.Log;
 
 import com.google.android.gms.common.util.ArrayUtils;
 import com.google.android.gms.tasks.Task;
-import com.google.firebase.ml.vision.FirebaseVision;
-import com.google.firebase.ml.vision.barcode.FirebaseVisionBarcode;
-import com.google.firebase.ml.vision.barcode.FirebaseVisionBarcodeDetector;
-import com.google.firebase.ml.vision.barcode.FirebaseVisionBarcodeDetectorOptions;
-import com.google.firebase.ml.vision.common.FirebaseVisionImage;
+import com.google.mlkit.vision.barcode.Barcode;
+import com.google.mlkit.vision.barcode.BarcodeScanner;
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions;
+import com.google.mlkit.vision.barcode.BarcodeScanning;
+import com.google.mlkit.vision.common.InputImage;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -35,11 +34,11 @@ import co.apperto.fastqrreaderview.java.VisionProcessorBase;
 /**
  * Barcode Detector Demo.
  */
-public class BarcodeScanningProcessor extends VisionProcessorBase<List<FirebaseVisionBarcode>> {
+public class BarcodeScanningProcessor extends VisionProcessorBase<List<Barcode>> {
 
     private static final String TAG = "BarcodeScanProc";
 
-    private final FirebaseVisionBarcodeDetector detector;
+    private final BarcodeScanner detector;
 
     public OnCodeScanned callback;
 
@@ -52,7 +51,7 @@ public class BarcodeScanningProcessor extends VisionProcessorBase<List<FirebaseV
         int[] additionalFormats = Arrays.copyOfRange(ArrayUtils.toPrimitiveArray(reqFormats), 1, reqFormats.size());
 
 
-        detector = FirebaseVision.getInstance().getVisionBarcodeDetector(new FirebaseVisionBarcodeDetectorOptions.Builder()
+        detector = BarcodeScanning.getClient(new BarcodeScannerOptions.Builder()
                 // setBarcodeFormats is quite weird. I have to do all of these just to pass a bunch of ints
                 .setBarcodeFormats(ArrayUtils.toPrimitiveArray(reqFormats)[0], additionalFormats)
                 .build());
@@ -60,32 +59,20 @@ public class BarcodeScanningProcessor extends VisionProcessorBase<List<FirebaseV
 
     @Override
     public void stop() {
-        try {
-            detector.close();
-        } catch (IOException e) {
-            Log.e(TAG, "Exception thrown while trying to close Barcode Detector: " + e);
-        }
-    }
-
-
-    @Override
-    protected Task<List<FirebaseVisionBarcode>> detectInImage(FirebaseVisionImage image) {
-        return detector.detectInImage(image);
+        detector.close();
     }
 
     @Override
-    protected void onSuccess(
-            @NonNull List<FirebaseVisionBarcode> barcodes,
-            @NonNull FrameMetadata frameMetadata) { //,
-//      @NonNull GraphicOverlay graphicOverlay) {
-//    graphicOverlay.clear();
+    protected Task<List<Barcode>> detectInImage(InputImage image) {
+        return detector.process(image);
+    }
 
+    @Override
+    protected void onSuccess(@NonNull List<Barcode> barcodes, @NonNull FrameMetadata frameMetadata) {
         for (int i = 0; i < barcodes.size(); ++i) {
-            FirebaseVisionBarcode barcode = barcodes.get(i);
+            Barcode barcode = barcodes.get(i);
             Log.d("BARCODE!", barcode.getRawValue());
             callback.onCodeScanned(barcode);
-//      BarcodeGraphic barcodeGraphic = new BarcodeGraphic(graphicOverlay, barcode);
-//      graphicOverlay.add(barcodeGraphic);
         }
     }
 

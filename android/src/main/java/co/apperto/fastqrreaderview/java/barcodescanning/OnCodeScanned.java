@@ -1,7 +1,7 @@
 package co.apperto.fastqrreaderview.java.barcodescanning;
 
-import com.google.firebase.ml.vision.barcode.FirebaseVisionBarcode;
+import com.google.mlkit.vision.barcode.Barcode;
 
 public interface OnCodeScanned {
-    void onCodeScanned(FirebaseVisionBarcode barcode);
+    void onCodeScanned(Barcode barcode);
 }

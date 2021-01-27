@@ -20,8 +20,7 @@ import androidx.annotation.NonNull;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
-import com.google.firebase.ml.vision.common.FirebaseVisionImage;
-import com.google.firebase.ml.vision.common.FirebaseVisionImageMetadata;
+import com.google.mlkit.vision.common.InputImage;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -32,7 +31,7 @@ import co.apperto.fastqrreaderview.common.VisionImageProcessor;
 /**
  * Abstract base class for ML Kit frame processors. Subclasses need to implement {@link
  * #onSuccess(T, FrameMetadata)} to define what they want to with the detection
- * results and {@link #detectInImage(FirebaseVisionImage)} to specify the detector object.
+ * results and {@link #detectInImage(InputImage)} to specify the detector object.
  *
  * @param <T> The type of the detected feature.
  */
@@ -52,26 +51,25 @@ public abstract class VisionProcessorBase<T> implements VisionImageProcessor {
             return;
         }
 
-        FirebaseVisionImageMetadata metadata =
-                new FirebaseVisionImageMetadata.Builder()
-                        .setFormat(FirebaseVisionImageMetadata.IMAGE_FORMAT_NV21)
-                        .setWidth(frameMetadata.getWidth())
-                        .setHeight(frameMetadata.getHeight())
-                        .setRotation(frameMetadata.getRotation())
-                        .build();
+        InputImage inputImage = InputImage.fromByteBuffer(
+                data,
+                frameMetadata.getWidth(),
+                frameMetadata.getHeight(),
+                frameMetadata.getRotation(),
+                InputImage.IMAGE_FORMAT_NV21
+        );
 
-        detectInVisionImage(
-                FirebaseVisionImage.fromByteBuffer(data, metadata), frameMetadata);//, graphicOverlay);
+        detectInVisionImage(inputImage, frameMetadata);
     }
 
     // Bitmap version
     @Override
-    public void process(Bitmap bitmap) {//, final GraphicOverlay graphicOverlay) {
+    public void process(Bitmap bitmap) {
         if (shouldThrottle.get()) {
             return;
         }
 
-        detectInVisionImage(FirebaseVisionImage.fromBitmap(bitmap), null);//, graphicOverlay);
+        detectInVisionImage(InputImage.fromBitmap(bitmap, 0), null);//, graphicOverlay);
     }
 
     /**
@@ -89,13 +87,12 @@ public abstract class VisionProcessorBase<T> implements VisionImageProcessor {
         FrameMetadata frameMetadata =
                 new FrameMetadata.Builder().setWidth(image.getWidth()).setHeight(image.getHeight
                         ()).build();
-        FirebaseVisionImage fbVisionImage =
-                FirebaseVisionImage.fromMediaImage(image, rotation);
+        InputImage fbVisionImage = InputImage.fromMediaImage(image, rotation);
         detectInVisionImage(fbVisionImage, frameMetadata);//, graphicOverlay);
     }
 
     private void detectInVisionImage(
-            FirebaseVisionImage image,
+            InputImage image,
             final FrameMetadata metadata) {//,
 //            final GraphicOverlay graphicOverlay) {
         detectInImage(image)
@@ -125,7 +122,7 @@ public abstract class VisionProcessorBase<T> implements VisionImageProcessor {
     public void stop() {
     }
 
-    protected abstract Task<T> detectInImage(FirebaseVisionImage image);
+    protected abstract Task<T> detectInImage(InputImage image);
 
     protected abstract void onSuccess(
             @NonNull T results,
