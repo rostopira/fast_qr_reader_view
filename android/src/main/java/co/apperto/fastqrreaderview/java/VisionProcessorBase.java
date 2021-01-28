@@ -55,7 +55,7 @@ public abstract class VisionProcessorBase<T> implements VisionImageProcessor {
                 data,
                 frameMetadata.getWidth(),
                 frameMetadata.getHeight(),
-                frameMetadata.getRotation(),
+                0,//frameMetadata.getRotation(),
                 InputImage.IMAGE_FORMAT_NV21
         );
 
@@ -87,7 +87,7 @@ public abstract class VisionProcessorBase<T> implements VisionImageProcessor {
         FrameMetadata frameMetadata =
                 new FrameMetadata.Builder().setWidth(image.getWidth()).setHeight(image.getHeight
                         ()).build();
-        InputImage fbVisionImage = InputImage.fromMediaImage(image, rotation);
+        InputImage fbVisionImage = InputImage.fromMediaImage(image, 0);
         detectInVisionImage(fbVisionImage, frameMetadata);//, graphicOverlay);
     }
 

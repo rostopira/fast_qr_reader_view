@@ -79,6 +79,7 @@ public class BarcodeScanningProcessor extends VisionProcessorBase<List<Barcode>>
     @Override
     protected void onFailure(@NonNull Exception e) {
         Log.e(TAG, "Barcode detection failed " + e);
+        e.printStackTrace();
     }
 }
 
