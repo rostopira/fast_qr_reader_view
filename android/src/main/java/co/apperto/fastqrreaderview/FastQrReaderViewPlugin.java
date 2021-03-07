@@ -533,7 +533,7 @@ public class FastQrReaderViewPlugin implements MethodCallHandler, PluginRegistry
                         if (camera.scanning) {
                             Log.w(TAG, "onSuccess: " + barcode.getRawValue());
                             channel.invokeMethod("updateCode", barcode.getRawValue());
-                            stopScanning();
+                            //stopScanning();
                         }
                     }
                 };
